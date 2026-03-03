@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Notebooks
+notebooks/.ipynb_checkpoints/
+
+# Credenciais — nunca commitar isso
+.env
+
+# Dados gerados (reproduzíveis pelo pipeline)
+data/raw/*.csv
+data/raw/*.parquet
+data/processed/*.parquet
+
+# Figuras geradas
+reports/figures/*.png
+reports/figures/*.html
+
+# Sistema
+.DS_Store
+Thumbs.db
+postgres-data/
+
+# Testes / ferramentas (opcional)
+.pytest_cache/
+
