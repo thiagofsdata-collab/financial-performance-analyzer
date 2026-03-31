@@ -58,34 +58,89 @@ def plot_revenue(df):
     return fig
 
 
-def plot_ebitda_waterfall(df, company="Company A"):
+def plot_ebitda_waterfall(df):
     """
-    Plot an EBITDA waterfall (bridge) for Company A.
+    Plot a full DRE waterfall bridge side by side for both companies.
 
     Args:
-        df (pd.DataFrame): DataFrame with financial line items.
+        df (pd.DataFrame): DataFrame with DRE line items as columns.
+        company (str): Not used in this version — plots both companies.
 
     Returns:
-        plotly.graph_objects.Figure: Waterfall chart showing EBITDA composition.
+        plotly.graph_objects.Figure: Side-by-side waterfall charts.
     """
-    data = df[df["company"] == company].sum(numeric_only=True)
+    from plotly.subplots import make_subplots
 
-    fig = go.Figure(go.Waterfall(
-        name="EBITDA Bridge",
-        orientation="v",
-        measure=["absolute", "relative", "relative", "relative", "total"],
-        x=["Receita Bruta", "Deducoes da Receita", "COGS", "Opex", "EBITDA"],
-        y=[
+    companies = df["company"].unique()
+
+    fig = make_subplots(
+        rows=1,
+        cols=len(companies),
+        subplot_titles=[f"DRE Bridge — {c} (Annual)" for c in companies],
+    )
+
+    labels = [
+        "Receita Bruta",
+        "Deducoes da Receita",
+        "COGS",
+        "Receita Liquida",
+        "Opex",
+        "EBITDA",
+        "Resultado Financeiro",
+        "Impostos",
+        "Lucro Liquido",
+    ]
+
+    measures = [
+        "absolute",
+        "relative",
+        "relative",
+        "total",
+        "relative",
+        "total",
+        "relative",
+        "relative",
+        "total",
+    ]
+
+    for i, comp in enumerate(companies):
+        data = df[df["company"] == comp].sum(numeric_only=True)
+
+        values = [
             data["Receita Bruta"],
             data["Deducoes da Receita"],
             data["COGS"],
+            data["Receita Liquida"],
             data["Opex"],
             data["EBITDA"],
-        ],
-        connector={"line": {"color": "rgb(63, 63, 63)"}},
-    ))
+            data["Resultado Financeiro"],
+            data["Impostos"],
+            data["Lucro Liquido"],
+        ]
 
-    fig.update_layout(title=f"EBITDA Bridge — {company} (Annual)")
+        fig.add_trace(
+            go.Waterfall(
+                name=comp,
+                orientation="v",
+                measure=measures,
+                x=labels,
+                y=values,
+                connector={"line": {"color": "rgb(63, 63, 63)"}},
+                increasing={"marker": {"color": "#2ecc71"}},
+                decreasing={"marker": {"color": "#e74c3c"}},
+                totals={"marker": {"color": "#3498db"}},
+                showlegend=False,
+            ),
+            row=1,
+            col=i + 1,
+        )
+
+    fig.update_layout(
+        title="DRE Bridge — Company A vs Company B (Annual)",
+        yaxis_title="R$",
+        height=600,
+    )
+
     return fig
 
 
