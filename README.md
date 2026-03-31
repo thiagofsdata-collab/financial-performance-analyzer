@@ -1,39 +1,38 @@
 # Financial Performance Analyzer — DRE Variance Analysis
 
-This project simulates ERP-style financial transactions and processes them through a financial
-reporting pipeline that reconstructs a DRE (Income Statement).
+Most financial analysis starts with a flat export from an ERP system — thousands of transaction
+rows with account codes, cost centers, and amounts that mean nothing on their own.
 
-The goal is to demonstrate how transaction-level data aggregates into financial statements,
-enabling analysis of gross profit, EBITDA, net income, and financial margins over time.
+This project simulates that exact starting point and builds a full pipeline to transform it into
+actionable financial reporting: a structured DRE (Income Statement), margin analysis, variance
+tracking, and an interactive Power BI dashboard.
 
-Synthetic transactions are generated across companies, business units, and cost centers.
-Random noise is applied at the cost center level to avoid perfectly linear distributions
-and better approximate real operational variability.
+The goal is to demonstrate the end-to-end workflow that FP&A and data teams run every month
+to track company performance — from raw transactional data to executive-level dashboards.
 
 ---
 
-## Project Structure
+## Demo
 
-```
-financial-performance-analyzer/
-├── data/
-│   ├── raw/                  # Output of extract.py (parquet)
-│   └── processed/            # Output of transform.py (parquet)
-├── notebooks/                # Exploratory analysis
-├── reports/
-│   └── figures/              # Plotly charts (HTML)
-├── scripts/
-│   └── generate_data.py      # Synthetic data generator
-├── sql/
-│   └── 01_schema.sql         # Database schema
-├── src/
-│   ├── extract.py
-│   ├── transform.py
-│   └── visualize.py
-├── .env.example
-├── docker-compose.yml
-└── requirements.txt
-```
+### Plotly Charts
+![Plotly Charts](reports/demo/plotly_charts.gif)
+
+### Power BI Dashboard
+![Power BI Dashboard](reports/demo/powerbi_dashboard.gif)
+
+---
+
+## Why This Matters
+
+In practice, finance teams receive ERP exports and need to answer questions like:
+
+- Where is the company losing margin month over month?
+- Which cost center is driving the increase in Opex?
+- How does Company A compare to Company B in profitability?
+
+Answering these manually in Excel is slow and error-prone. This project automates the entire
+workflow — from loading raw transactions into a database, to building the DRE logic in Python,
+to surfacing the results in a Power BI dashboard that any stakeholder can use.
 
 ---
 
@@ -43,32 +42,99 @@ financial-performance-analyzer/
 ERP-style Transactions (synthetic)
             │
             ▼
-      PostgreSQL Database
+    PostgreSQL Database          ← docker-compose (financial_db)
+    (transactions table)
+            │  SQL query by period
+            ▼
+    src/extract.py           →   data/raw/transactions.parquet
             │
             ▼
-      src/extract.py       →   data/raw/transactions.parquet
+    src/transform.py         →   data/processed/dre_metrics.parquet
+      - build_dre()               DRE lines, subtotals
+      - calculate_margins()       Gross margin, EBITDA margin, Net margin
+      - calculate_variance()      MoM and YoY variance
             │
-            ▼
-      src/transform.py     →   data/processed/dre_metrics.parquet
-        (DRE logic)
+            ├──────────────────→  src/visualize.py
+            │                     Plotly charts (HTML)
+            │                     - Margins over time
+            │                     - Gross revenue by month
+            │                     - DRE waterfall bridge
             │
-            ▼
-      src/visualize.py     →   reports/figures/
+            └──────────────────→  Power BI Desktop
+                                  Connected directly to PostgreSQL
+                                  - Revenue Overview
+                                  - Margins & Profitability
+                                  - Cost Breakdown by DRE line and cost center
 ```
+
+---
+
+## Power BI Dashboard
+
+The dashboard connects directly to PostgreSQL via the Npgsql driver and uses DAX measures
+to calculate margins dynamically — so every slicer interaction recomputes the metrics in real time.
+
+**Revenue Overview**
+Monthly gross revenue comparison between Company A and Company B. Includes a company slicer
+and a total revenue card. Shows revenue scale differences and monthly distribution patterns.
+
+**Margins & Profitability**
+Line chart tracking Gross Margin % and EBITDA Margin % across 12 months, with a detailed
+table showing absolute values per month. Useful for identifying which months underperformed
+and how the two companies compare in profitability.
+
+**Cost Breakdown**
+Bar charts showing total costs by DRE line (COGS, Opex, Deductions) and by cost center.
+Retail operations represent the largest cost driver, consistent with the revenue weight
+of the Retail business unit (50% of total revenue).
+
+DAX measures used:
+- `Receita Bruta` — filters transactions where dre_line = "Receita Bruta"
+- `Lucro Bruto` — aggregates Receita Bruta + Deducoes + COGS
+- `EBITDA` — aggregates through Opex
+- `Gross Margin %` — DIVIDE(Lucro Bruto, Receita Bruta)
+- `EBITDA Margin %` — DIVIDE(EBITDA, Receita Bruta)
+- `Total Costs (Abs)` — ABS of cost lines for cleaner visualization
 
 ---
 
 ## Data Source
 
-Financial structures were inspired by real financial statements from major companies.
+Financial structures were calibrated using real income statement data from major public companies.
 
 Dataset reference:
 [Financial Statements of Major Companies 2009–2023](https://www.kaggle.com/datasets/rish59/financial-statements-of-major-companies2009-2023)
 
-Margin proportions (gross margin, EBITDA margin, net margin) were calculated from this dataset
-by industry category and used to calibrate synthetic transaction amounts. The transaction-level
-detail — companies, business units, cost centers — was generated synthetically, as ERP data
-is always proprietary in real environments.
+Margin proportions by industry category (IT: gross margin ~57%, EBITDA ~36% / FOOD: gross
+margin ~45%, EBITDA ~42%) were used to set the account proportions in the synthetic generator.
+Transaction-level detail — companies, business units, cost centers — was generated synthetically,
+as ERP data is always proprietary in real environments.
+
+---
+
+## Project Structure
+
+```
+financial-performance-analyzer/
+├── data/
+│   ├── raw/                    # Output of extract.py (parquet)
+│   └── processed/              # Output of transform.py (parquet)
+├── notebooks/                  # Exploratory analysis
+├── reports/
+│   ├── demo/                   # GIFs for README
+│   └── figures/                # Plotly charts (HTML)
+├── scripts/
+│   └── generate_data.py        # Synthetic data generator
+├── sql/
+│   └── 01_schema.sql           # Database schema
+├── src/
+│   ├── extract.py              # PostgreSQL → parquet
+│   ├── transform.py            # DRE logic, margins, variance
+│   └── visualize.py            # Plotly charts
+├── .env.example
+├── docker-compose.yml
+└── requirements.txt
+```
 
 ---
 
@@ -77,12 +143,12 @@ is always proprietary in real environments.
 **1. Clone and install dependencies**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/financial-performance-analyzer.git
+git clone https://github.com/thiagofsdata-collab/financial-performance-analyzer.git
 cd financial-performance-analyzer
 
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\activate          # Mac/Linux: source .venv/bin/activate
+pip install pandas numpy sqlalchemy psycopg2-binary plotly python-dotenv faker pyarrow
 ```
 
 **2. Configure environment**
@@ -111,51 +177,39 @@ python -m src.transform
 python -m src.visualize
 ```
 
-Charts will be saved to `reports/figures/` as interactive HTML files.
+Plotly charts will be saved to `reports/figures/` as interactive HTML files.
 
----
+**6. Power BI**
 
-## Outputs
-
-**margins_over_time**
-Line chart comparing gross margin, EBITDA margin, and net margin across 12 months for both
-companies. Highlights profitability trends and margin stability over time.
-
-**gross_revenue_by_month**
-Grouped bar chart showing monthly revenue for Company A and Company B side by side.
-Useful for comparing revenue scale and identifying seasonality patterns.
-
-**ebitda_bridge_company_a**
-Waterfall chart decomposing how each DRE line contributes to EBITDA for Company A.
-
-```
-Receita Bruta → - Deduções → - COGS → - Opex → = EBITDA
-```
-
-This visualization mirrors how financial analysts explain profit formation in business reviews.
+Install the Npgsql driver, open Power BI Desktop, and connect to `localhost:5432 / financial_db`
+using the credentials from your `.env` file.
 
 ---
 
 ## Technical Decisions
 
 **Amount sign convention**
-Revenue is stored as positive, costs and deductions as negative. This allows financial totals
-to be calculated with a plain `SUM(amount)` without conditional logic in queries.
+Revenue is positive, costs and deductions are negative. This allows `SUM(amount)` to produce
+correct DRE totals without conditional logic in queries or transformations.
 
 **Parquet format**
-Processed datasets are stored in Parquet, a columnar format optimized for analytical workloads.
-Faster to read and significantly more compact than CSV for data pipelines.
+Intermediate datasets are stored in Parquet — columnar, compressed, and significantly faster
+to read than CSV for analytical workloads.
 
 **SQLAlchemy over psycopg2**
-SQLAlchemy provides an abstraction layer with cleaner query parameterization and seamless
-Pandas integration via `pd.read_sql`. Improves maintainability compared to raw psycopg2 cursors.
+Provides an abstraction layer with cleaner query parameterization and native Pandas integration
+via `pd.read_sql`. More maintainable than raw cursor operations.
 
-**YoY calculations return NaN**
-Expected behavior — the dataset only covers 2023. Adding a second year of transactions would
-automatically populate YoY metrics without any changes to the pipeline logic.
+**DAX over pre-computed margins**
+Margins in Power BI are calculated via DAX measures rather than imported from the processed
+parquet. This allows slicers to recompute metrics dynamically based on user filters.
+
+**YoY returns NaN**
+Expected — the dataset only covers 2023. A second year of transactions would populate YoY
+metrics automatically without any changes to the pipeline.
 
 ---
 
 ## Technologies
 
-Python, Pandas, NumPy, PostgreSQL, SQLAlchemy, Plotly, Docker, Parquet
+Python, Pandas, NumPy, PostgreSQL, SQLAlchemy, Plotly, Docker, Parquet, Power BI, DAX
