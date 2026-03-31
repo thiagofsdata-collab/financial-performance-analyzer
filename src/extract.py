@@ -6,6 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_connection():
+    """
+    Creates a SQLAlchemy engine using credentials from .env file.
+
+    Returns:
+        sqlalchemy.Engine: active database engine
+    """
+
     host = os.getenv("DB_HOST", "localhost")
     port = os.getenv("DB_PORT", "5432")
     dbname = os.getenv("DB_NAME", "financial_db")
@@ -15,6 +22,17 @@ def get_connection():
 
 
 def extract_transactions(start_date, end_date):
+    """
+    Queries the transactions table filtered by date range.
+
+    Args:
+        start_date (str): start date in YYYY-MM-DD format
+        end_date (str): end date in YYYY-MM-DD format
+
+    Returns:
+        pd.DataFrame: raw transactions for the given period
+    """
+
     engine = get_connection()
     query = """
         SELECT *
@@ -30,6 +48,14 @@ def extract_transactions(start_date, end_date):
     return df
 
 def save_raw(df,path):
+    """
+    Saves a DataFrame to disk in Parquet format.
+
+    Args:
+        df (pd.DataFrame): DataFrame to save
+        path (str): destination file path
+    """
+
     df.to_parquet(path, index=False)
 
 

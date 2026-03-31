@@ -4,10 +4,28 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 def load_processed(path):
+    """
+    Load a processed Parquet file.
+
+    Args:
+        path (str): Path to the Parquet file.
+
+    Returns:
+        pd.DataFrame: DataFrame with processed data.
+    """
     df = pd.read_parquet(path)
     return df
 
 def plot_margins(df):
+    """
+    Plot margin trends over time by company.
+
+    Args:
+        df (pd.DataFrame): DataFrame with date, company, and margin columns.
+
+    Returns:
+        plotly.graph_objects.Figure: Line chart of margins over time.
+    """
     fig = px.line(
         df,
         x="date",
@@ -19,6 +37,15 @@ def plot_margins(df):
     return fig
 
 def plot_revenue(df):
+    """
+    Plot gross revenue by month and company.
+
+    Args:
+        df (pd.DataFrame): DataFrame with date, company, and revenue columns.
+
+    Returns:
+        plotly.graph_objects.Figure: Bar chart of gross revenue.
+    """
     fig = px.bar(
         df,
         x="date",
@@ -32,6 +59,15 @@ def plot_revenue(df):
 
 
 def plot_ebitda_waterfall(df):
+    """
+    Plot an EBITDA waterfall (bridge) for Company A.
+
+    Args:
+        df (pd.DataFrame): DataFrame with financial line items.
+
+    Returns:
+        plotly.graph_objects.Figure: Waterfall chart showing EBITDA composition.
+    """
     company_a = df[df["company"] == "Company A"].sum(numeric_only=True)
 
     fig = go.Figure(go.Waterfall(
@@ -54,6 +90,16 @@ def plot_ebitda_waterfall(df):
 
 
 def export_figures(figs: dict, folder: str):
+    """
+    Export Plotly figures as HTML files.
+
+    Args:
+        figs (dict): Dictionary of {name: figure}.
+        folder (str): Output directory.
+
+    Returns:
+        None
+    """
     os.makedirs(folder, exist_ok=True)
     for name, fig in figs.items():
         fig.write_html(os.path.join(folder, f"{name}.html"))
