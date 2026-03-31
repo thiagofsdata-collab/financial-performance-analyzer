@@ -58,7 +58,7 @@ def plot_revenue(df):
     return fig
 
 
-def plot_ebitda_waterfall(df):
+def plot_ebitda_waterfall(df, company="Company A"):
     """
     Plot an EBITDA waterfall (bridge) for Company A.
 
@@ -68,7 +68,7 @@ def plot_ebitda_waterfall(df):
     Returns:
         plotly.graph_objects.Figure: Waterfall chart showing EBITDA composition.
     """
-    company_a = df[df["company"] == "Company A"].sum(numeric_only=True)
+    data = df[df["company"] == company].sum(numeric_only=True)
 
     fig = go.Figure(go.Waterfall(
         name="EBITDA Bridge",
@@ -76,16 +76,16 @@ def plot_ebitda_waterfall(df):
         measure=["absolute", "relative", "relative", "relative", "total"],
         x=["Receita Bruta", "Deducoes da Receita", "COGS", "Opex", "EBITDA"],
         y=[
-            company_a["Receita Bruta"],
-            company_a["Deducoes da Receita"],
-            company_a["COGS"],
-            company_a["Opex"],
-            company_a["EBITDA"],
+            data["Receita Bruta"],
+            data["Deducoes da Receita"],
+            data["COGS"],
+            data["Opex"],
+            data["EBITDA"],
         ],
         connector={"line": {"color": "rgb(63, 63, 63)"}},
     ))
 
-    fig.update_layout(title="EBITDA Bridge — Company A (Annual)")
+    fig.update_layout(title=f"EBITDA Bridge — {company} (Annual)")
     return fig
 
 

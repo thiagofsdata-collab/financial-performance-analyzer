@@ -39,14 +39,14 @@ def build_dre(df):
             and calculated indicators
     """
 
-    df = df.groupby(['company','date','dre_line'])["amount"].sum().unstack("dre_line").reset_index()
+    dre = df.groupby(['company','date','dre_line'])["amount"].sum().unstack("dre_line").reset_index()
     
-    df["Receita Liquida"] = df["Receita Bruta"] + df["Deducoes da Receita"]
-    df["Lucro Bruto"] = df["Receita Liquida"] + df["COGS"]
-    df["EBITDA"] = df["Lucro Bruto"] + df["Opex"]
-    df["Lucro Liquido"] = df["EBITDA"] + df["Resultado Financeiro"] + df["Impostos"]
+    dre["Receita Liquida"] = dre["Receita Bruta"] + dre["Deducoes da Receita"]
+    dre["Lucro Bruto"] = dre["Receita Liquida"] + dre["COGS"]
+    dre["EBITDA"] = dre["Lucro Bruto"] + dre["Opex"]
+    dre["Lucro Liquido"] = dre["EBITDA"] + dre["Resultado Financeiro"] + dre["Impostos"]
     
-    return df
+    return dre
 
 def calculate_margins(df):
     """
