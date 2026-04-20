@@ -44,7 +44,12 @@ ERP-style Transactions (synthetic)
             ▼
     PostgreSQL Database          ← docker-compose (financial_db)
     (transactions table)
-            │  SQL query by period
+            │
+            ├──────────────────→  dbt/models/
+            │                     staging/    → stg_transactions, stg_account_mapping
+            │                     intermediate/ → int_transactions_enriched
+            │                     marts/      → fct_dre (DRE + margins as table)
+            │
             ▼
     src/extract.py           →   data/raw/transactions.parquet
             │
@@ -67,7 +72,27 @@ ERP-style Transactions (synthetic)
                                   - Cost Breakdown by DRE line and cost center
 ```
 
----
+## dbt Models
+
+The transformation layer is built with dbt (v1.11), organized in three layers on top of PostgreSQL.
+
+**Staging** — one model per source table. Casts column types, renames fields for consistency,
+and isolates raw source dependencies. No business logic at this layer.
+
+**Intermediate** — joins `stg_transactions` with `stg_account_mapping` and aggregates amounts
+by company, date, business unit, cost center, and DRE line. Enriched transaction dataset
+ready for final aggregation.
+
+**Marts** — `fct_dre` is the final consumption model. Pivots DRE lines into columns, calculates
+subtotals (Receita Liquida, Lucro Bruto, EBITDA, Lucro Liquido), and computes margins.
+Materialized as a table for query performance.
+
+**Data quality tests (14 total):**
+- `not_null` on all critical fields: transaction_id, date, company, amount, dre_line
+- `unique` on transaction_id and account_code
+- `accepted_values` on company and dre_line
+- Custom test: asserts `receita_bruta > ebitda` for every row in `fct_dre`
+
 
 ## Power BI Dashboard
 
@@ -134,6 +159,13 @@ financial-performance-analyzer/
 ├── .env.example
 ├── docker-compose.yml
 └── requirements.txt
+├── dbt/
+│   ├── models/
+│   │   ├── staging/            # stg_transactions, stg_account_mapping
+│   │   ├── intermediate/       # int_transactions_enriched
+│   │   └── marts/              # fct_dre (final consumption model)
+│   ├── tests/                  # custom data quality tests
+│   └── dbt_project.yml
 ```
 
 ---
@@ -179,6 +211,15 @@ python -m src.visualize
 
 Plotly charts will be saved to `reports/figures/` as interactive HTML files.
 
+**5.1. Run the dbt pipeline**
+
+```bash
+cd dbt
+dbt run       # builds all models: staging → intermediate → marts
+dbt test      # runs 14 data quality tests
+cd ..
+```
+
 **6. Power BI**
 
 Install the Npgsql driver, open Power BI Desktop, and connect to `localhost:5432 / financial_db`
@@ -204,6 +245,12 @@ via `pd.read_sql`. More maintainable than raw cursor operations.
 Margins in Power BI are calculated via DAX measures rather than imported from the processed
 parquet. This allows slicers to recompute metrics dynamically based on user filters.
 
+**dbt transformation layer**
+dbt was added to demonstrate Analytics Engineering practices — layered modeling, data contracts
+via schema tests, and separation of concerns between raw sources and consumption models.
+In this project scale, the Python pipeline alone would be sufficient. The dbt layer is
+intentional portfolio decision to show familiarity with modern data stack conventions.
+
 **YoY returns NaN**
 Expected — the dataset only covers 2023. A second year of transactions would populate YoY
 metrics automatically without any changes to the pipeline.
@@ -212,4 +259,4 @@ metrics automatically without any changes to the pipeline.
 
 ## Technologies
 
-Python, Pandas, NumPy, PostgreSQL, SQLAlchemy, Plotly, Docker, Parquet, Power BI, DAX
+Python, Pandas, NumPy, PostgreSQL, SQLAlchemy, Plotly, Docker, Parquet, Power BI, DAX, dbt
