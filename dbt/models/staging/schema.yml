@@ -1,0 +1,56 @@
+version: 2
+
+sources:
+  - name: financial_db
+    database: financial_db
+    schema: public
+    tables:
+      - name: transactions
+      - name: account_mapping
+
+models:
+  - name: stg_transactions
+    columns:
+      - name: transaction_id
+        tests:
+          - not_null
+          - unique
+      - name: date
+        tests:
+          - not_null
+      - name: company
+        tests:
+          - not_null
+          - accepted_values:
+                values: 
+                  - 'Company A' 
+                  - 'Company B'
+      - name: amount
+        tests:
+          - not_null
+      - name: dre_line
+        tests:
+          - not_null
+          - accepted_values:
+              values: 
+                - 'Receita Bruta'
+                - 'Deducoes da Receita'
+                - 'COGS'
+                - 'Opex'
+                - 'Resultado Financeiro'
+                - 'Impostos'
+
+  - name: stg_account_mapping
+    columns:
+      - name: account_code
+        tests:
+          - not_null
+          - unique
+      - name: dre_line
+        tests:
+          - not_null
+      - name: amount_sign
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, -1]
