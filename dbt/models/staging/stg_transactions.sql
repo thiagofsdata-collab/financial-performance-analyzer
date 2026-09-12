@@ -4,7 +4,7 @@ with source as (
 
 renamed as (
     select
-        id as transaction_id,
+        transaction_id,
         date::date as date,
         company,
         business_unit,

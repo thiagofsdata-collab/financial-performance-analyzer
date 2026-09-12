@@ -26,3 +26,9 @@ postgres-data/
 # Testes / ferramentas (opcional)
 .pytest_cache/
 
+# Logs (dbt e afins)
+logs/
+
+# Notas de trabalho com Claude Code — não faz parte do portfólio público
+CLAUDE.md
+

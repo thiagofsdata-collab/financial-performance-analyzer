@@ -1,9 +1,17 @@
+import calendar
 import os
-import pandas as pd
-import numpy as np
+import sys
+import uuid
 from datetime import date
-from sqlalchemy import create_engine, text
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.contracts import TransactionRecord
 
 load_dotenv()
 
@@ -81,14 +89,24 @@ def generate_transactions() -> pd.DataFrame:
     """
     Generate synthetic financial transactions.
 
-    Creates transaction records across companies, business units,
-    cost centers, and accounts for each month of the year,
-    applying proportional weights and random noise.
+    Creates individual transaction records (transaction grain, not
+    monthly aggregates) across companies, business units, cost centers,
+    and accounts for each month of the year. Each (month, company,
+    business_unit, cost_center, account) combination is split into
+    several individual transactions with distinct dates and amounts,
+    so the dataset behaves like real ERP transaction-level data rather
+    than pre-aggregated totals.
+
+    Every record is validated against TransactionRecord (the data
+    contract) before being accepted — a malformed record raises
+    pydantic.ValidationError instead of silently entering the pipeline.
     """
     np.random.seed(42)
     rows = []
 
     for month in MONTHS:
+        days_in_month = calendar.monthrange(month.year, month.month)[1]
+
         for company, base_revenue in COMPANIES.items():
             for bu, bu_weight in BU_WEIGHTS.items():
                 cost_centers = COST_CENTERS[bu]
@@ -98,18 +116,28 @@ def generate_transactions() -> pd.DataFrame:
                     for code, name, dre_line, order, sign, pct in ACCOUNT_MAPPING:
                         base = base_revenue * bu_weight * cc_weight * pct
                         noise = np.random.uniform(0.85, 1.15)
-                        amount = round(base * noise * sign, 2)
+                        monthly_total = base * noise * sign
 
-                        rows.append({
-                            "date": month,
-                            "company": company,
-                            "business_unit": bu,
-                            "cost_center": cc,
-                            "account_code": code,
-                            "account_name": name,
-                            "dre_line": dre_line,
-                            "amount": amount,
-                        })
+                        n_transactions = np.random.randint(3, 9)
+                        splits = np.random.dirichlet(np.ones(n_transactions))
+
+                        for split in splits:
+                            txn_day = int(np.random.randint(1, days_in_month + 1))
+                            txn_date = date(month.year, month.month, txn_day)
+                            txn_amount = round(float(monthly_total * split), 2)
+
+                            record = TransactionRecord(
+                                transaction_id=str(uuid.uuid4()),
+                                date=txn_date,
+                                company=company,
+                                business_unit=bu,
+                                cost_center=cc,
+                                account_code=code,
+                                account_name=name,
+                                dre_line=dre_line,
+                                amount=txn_amount,
+                            )
+                            rows.append(record.model_dump())
 
     return pd.DataFrame(rows)
 

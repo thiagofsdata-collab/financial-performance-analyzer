@@ -8,7 +8,10 @@ account_mapping as (
 
 joined as (
     select
-        t.date,
+        -- transaction-grain dates are truncated to month here because this
+        -- model's job is to consolidate to the reporting grain fct_dre expects;
+        -- stg_transactions upstream still preserves the real transaction date.
+        date_trunc('month', t.date)::date as date,
         t.company,
         t.business_unit,
         t.cost_center,

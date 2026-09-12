@@ -39,6 +39,12 @@ def build_dre(df):
             and calculated indicators
     """
 
+    # transaction-grain dates are truncated to month so this matches the
+    # monthly consolidation the dbt fct_dre model performs (df['date'] holds
+    # real transaction dates, not pre-aggregated monthly totals)
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"]).dt.to_period("M").dt.to_timestamp()
+
     dre = df.groupby(['company','date','dre_line'])["amount"].sum().unstack("dre_line").reset_index()
     
     dre["Receita Liquida"] = dre["Receita Bruta"] + dre["Deducoes da Receita"]
