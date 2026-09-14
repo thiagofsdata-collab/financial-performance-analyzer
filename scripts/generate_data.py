@@ -123,13 +123,22 @@ def generate_transactions() -> pd.DataFrame:
                         n_transactions = np.random.randint(3, 9)
                         splits = np.random.dirichlet(np.ones(n_transactions))
 
-                        for split in splits:
+                        for split_index, split in enumerate(splits):
                             txn_day = int(np.random.randint(1, days_in_month + 1))
                             txn_date = date(month.year, month.month, txn_day)
                             txn_amount = round(float(monthly_total * split), 2)
 
+                            # deterministic id: same (month, company, bu, cc,
+                            # account, split) always yields the same id, so
+                            # re-running the generator produces byte-identical
+                            # output — required for content-hash idempotency
+                            # downstream. uuid4() would break this: it draws
+                            # from os.urandom, ignoring np.random's seed.
+                            natural_key = f"{month.isoformat()}|{company}|{bu}|{cc}|{code}|{split_index}"
+                            transaction_id = str(uuid.uuid5(uuid.NAMESPACE_OID, natural_key))
+
                             record = TransactionRecord(
-                                transaction_id=str(uuid.uuid4()),
+                                transaction_id=transaction_id,
                                 date=txn_date,
                                 company=company,
                                 business_unit=bu,

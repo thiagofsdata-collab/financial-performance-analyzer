@@ -8,3 +8,4 @@ kaleido==0.2.1
 python-dotenv==1.0.1
 faker==25.0.1
 pydantic==2.13.2
+google-cloud-storage==3.14.1
