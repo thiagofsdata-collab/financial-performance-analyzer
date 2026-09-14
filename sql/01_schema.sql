@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS transactions;
-DROP TABLE IF EXISTS account_mapping;
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS account_mapping CASCADE;
 
 CREATE TABLE account_mapping (
     account_code   VARCHAR(10)  PRIMARY KEY,
@@ -11,6 +11,7 @@ CREATE TABLE account_mapping (
 
 CREATE TABLE transactions (
     id             SERIAL        PRIMARY KEY,
+    transaction_id VARCHAR(36)   NOT NULL UNIQUE,
     date           DATE          NOT NULL,
     company        VARCHAR(50)   NOT NULL,
     business_unit  VARCHAR(50)   NOT NULL,

@@ -1,9 +1,19 @@
+import calendar
 import os
-import pandas as pd
-import numpy as np
+import sys
+import uuid
 from datetime import date
-from sqlalchemy import create_engine, text
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.contracts import TransactionRecord
 
 load_dotenv()
 
@@ -81,14 +91,24 @@ def generate_transactions() -> pd.DataFrame:
     """
     Generate synthetic financial transactions.
 
-    Creates transaction records across companies, business units,
-    cost centers, and accounts for each month of the year,
-    applying proportional weights and random noise.
+    Creates individual transaction records (transaction grain, not
+    monthly aggregates) across companies, business units, cost centers,
+    and accounts for each month of the year. Each (month, company,
+    business_unit, cost_center, account) combination is split into
+    several individual transactions with distinct dates and amounts,
+    so the dataset behaves like real ERP transaction-level data rather
+    than pre-aggregated totals.
+
+    Every record is validated against TransactionRecord (the data
+    contract) before being accepted — a malformed record raises
+    pydantic.ValidationError instead of silently entering the pipeline.
     """
     np.random.seed(42)
     rows = []
 
     for month in MONTHS:
+        days_in_month = calendar.monthrange(month.year, month.month)[1]
+
         for company, base_revenue in COMPANIES.items():
             for bu, bu_weight in BU_WEIGHTS.items():
                 cost_centers = COST_CENTERS[bu]
@@ -98,18 +118,28 @@ def generate_transactions() -> pd.DataFrame:
                     for code, name, dre_line, order, sign, pct in ACCOUNT_MAPPING:
                         base = base_revenue * bu_weight * cc_weight * pct
                         noise = np.random.uniform(0.85, 1.15)
-                        amount = round(base * noise * sign, 2)
+                        monthly_total = base * noise * sign
 
-                        rows.append({
-                            "date": month,
-                            "company": company,
-                            "business_unit": bu,
-                            "cost_center": cc,
-                            "account_code": code,
-                            "account_name": name,
-                            "dre_line": dre_line,
-                            "amount": amount,
-                        })
+                        n_transactions = np.random.randint(3, 9)
+                        splits = np.random.dirichlet(np.ones(n_transactions))
+
+                        for split in splits:
+                            txn_day = int(np.random.randint(1, days_in_month + 1))
+                            txn_date = date(month.year, month.month, txn_day)
+                            txn_amount = round(float(monthly_total * split), 2)
+
+                            record = TransactionRecord(
+                                transaction_id=str(uuid.uuid4()),
+                                date=txn_date,
+                                company=company,
+                                business_unit=bu,
+                                cost_center=cc,
+                                account_code=code,
+                                account_name=name,
+                                dre_line=dre_line,
+                                amount=txn_amount,
+                            )
+                            rows.append(record.model_dump())
 
     return pd.DataFrame(rows)
 
@@ -160,15 +190,38 @@ def load_transactions(engine, df):
 
 
 
+# Explicit landing-zone schema, defined independently of TransactionRecord
+# (Option A): the Parquet schema is not inferred from whatever dtypes the
+# DataFrame happens to have, nor derived from the Pydantic contract — it is
+# the one fixed shape every raw file must match, chosen deliberately.
+# decimal128 is fixed at 16 bytes regardless of declared precision, so
+# precision=12 costs nothing extra; it just draws the line for what amount
+# a transaction is allowed to hold before write fails loudly.
+TRANSACTION_PARQUET_SCHEMA = pa.schema([
+    ("transaction_id", pa.string()),
+    ("date", pa.date32()),
+    ("company", pa.string()),
+    ("business_unit", pa.string()),
+    ("cost_center", pa.string()),
+    ("account_code", pa.string()),
+    ("account_name", pa.string()),
+    ("dre_line", pa.string()),
+    ("amount", pa.decimal128(12, 2)),
+])
+
+
 def save_raw(df):
     """
     Save generated transactions as a raw parquet file.
 
     Writes the DataFrame of synthetic transactions to
-    data/raw/transactions.parquet for downstream processing.
+    data/raw/transactions.parquet, enforcing TRANSACTION_PARQUET_SCHEMA
+    explicitly instead of letting pandas/PyArrow infer types from the
+    DataFrame's dtypes.
     """
     path = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "transactions.parquet")
-    df.to_parquet(path, index=False)
+    table = pa.Table.from_pandas(df, schema=TRANSACTION_PARQUET_SCHEMA, preserve_index=False)
+    pq.write_table(table, path)
     print(f"raw parquet saved to data/raw/transactions.parquet")
 
 
