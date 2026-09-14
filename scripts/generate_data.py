@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
@@ -188,15 +190,38 @@ def load_transactions(engine, df):
 
 
 
+# Explicit landing-zone schema, defined independently of TransactionRecord
+# (Option A): the Parquet schema is not inferred from whatever dtypes the
+# DataFrame happens to have, nor derived from the Pydantic contract — it is
+# the one fixed shape every raw file must match, chosen deliberately.
+# decimal128 is fixed at 16 bytes regardless of declared precision, so
+# precision=12 costs nothing extra; it just draws the line for what amount
+# a transaction is allowed to hold before write fails loudly.
+TRANSACTION_PARQUET_SCHEMA = pa.schema([
+    ("transaction_id", pa.string()),
+    ("date", pa.date32()),
+    ("company", pa.string()),
+    ("business_unit", pa.string()),
+    ("cost_center", pa.string()),
+    ("account_code", pa.string()),
+    ("account_name", pa.string()),
+    ("dre_line", pa.string()),
+    ("amount", pa.decimal128(12, 2)),
+])
+
+
 def save_raw(df):
     """
     Save generated transactions as a raw parquet file.
 
     Writes the DataFrame of synthetic transactions to
-    data/raw/transactions.parquet for downstream processing.
+    data/raw/transactions.parquet, enforcing TRANSACTION_PARQUET_SCHEMA
+    explicitly instead of letting pandas/PyArrow infer types from the
+    DataFrame's dtypes.
     """
     path = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "transactions.parquet")
-    df.to_parquet(path, index=False)
+    table = pa.Table.from_pandas(df, schema=TRANSACTION_PARQUET_SCHEMA, preserve_index=False)
+    pq.write_table(table, path)
     print(f"raw parquet saved to data/raw/transactions.parquet")
 
 
