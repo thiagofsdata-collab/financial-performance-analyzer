@@ -87,59 +87,86 @@ COST_CENTERS = {
 MONTHS = [date(2023, m, 1) for m in range(1, 13)]
 
 
-def generate_transactions() -> pd.DataFrame:
+def _generate_month(month: date, rows: list) -> None:
+    """Appends one month's worth of transaction rows into `rows` in place."""
+    days_in_month = calendar.monthrange(month.year, month.month)[1]
+
+    for company, base_revenue in COMPANIES.items():
+        for bu, bu_weight in BU_WEIGHTS.items():
+            cost_centers = COST_CENTERS[bu]
+            cc_weight = 1 / len(cost_centers)
+
+            for cc in cost_centers:
+                for code, name, dre_line, order, sign, pct in ACCOUNT_MAPPING:
+                    base = base_revenue * bu_weight * cc_weight * pct
+                    noise = np.random.uniform(0.85, 1.15)
+                    monthly_total = base * noise * sign
+
+                    n_transactions = np.random.randint(3, 9)
+                    splits = np.random.dirichlet(np.ones(n_transactions))
+
+                    for split_index, split in enumerate(splits):
+                        txn_day = int(np.random.randint(1, days_in_month + 1))
+                        txn_date = date(month.year, month.month, txn_day)
+                        txn_amount = round(float(monthly_total * split), 2)
+
+                        # deterministic id: same (month, company, bu, cc,
+                        # account, split) always yields the same id, so
+                        # re-running the generator produces byte-identical
+                        # output — required for content-hash idempotency
+                        # downstream. uuid4() would break this: it draws
+                        # from os.urandom, ignoring np.random's seed.
+                        natural_key = f"{month.isoformat()}|{company}|{bu}|{cc}|{code}|{split_index}"
+                        transaction_id = str(uuid.uuid5(uuid.NAMESPACE_OID, natural_key))
+
+                        record = TransactionRecord(
+                            transaction_id=transaction_id,
+                            date=txn_date,
+                            company=company,
+                            business_unit=bu,
+                            cost_center=cc,
+                            account_code=code,
+                            account_name=name,
+                            dre_line=dre_line,
+                            amount=txn_amount,
+                        )
+                        rows.append(record.model_dump())
+
+
+def generate_transactions(year_month: str | None = None) -> pd.DataFrame:
     """
     Generate synthetic financial transactions.
 
     Creates individual transaction records (transaction grain, not
-    monthly aggregates) across companies, business units, cost centers,
-    and accounts for each month of the year. Each (month, company,
-    business_unit, cost_center, account) combination is split into
-    several individual transactions with distinct dates and amounts,
-    so the dataset behaves like real ERP transaction-level data rather
-    than pre-aggregated totals.
+    monthly aggregates) for companies, business units, cost centers,
+    and accounts. Every record is validated against TransactionRecord
+    (the data contract) before being accepted — a malformed record
+    raises pydantic.ValidationError instead of silently entering the
+    pipeline.
 
-    Every record is validated against TransactionRecord (the data
-    contract) before being accepted — a malformed record raises
-    pydantic.ValidationError instead of silently entering the pipeline.
+    Args:
+        year_month: "YYYY-MM" to generate a single month (used by the
+            incremental GCS/BigQuery ingestion path). If None, generates
+            the full 2023 year in one deterministic pass (the original
+            behavior, used by the local Postgres/dbt dev flow).
+
+    Determinism: np.random is (re)seeded to 42 immediately before
+    generation. For a single year_month, this makes that month
+    reproducible in isolation — but it will NOT match the values that
+    month had inside a full-year generation, since in that case the
+    random state had already advanced through every earlier month's
+    draws first. The two modes are deterministic each on their own
+    terms, not against each other.
     """
     np.random.seed(42)
     rows = []
 
-    for month in MONTHS:
-        days_in_month = calendar.monthrange(month.year, month.month)[1]
-
-        for company, base_revenue in COMPANIES.items():
-            for bu, bu_weight in BU_WEIGHTS.items():
-                cost_centers = COST_CENTERS[bu]
-                cc_weight = 1 / len(cost_centers)
-
-                for cc in cost_centers:
-                    for code, name, dre_line, order, sign, pct in ACCOUNT_MAPPING:
-                        base = base_revenue * bu_weight * cc_weight * pct
-                        noise = np.random.uniform(0.85, 1.15)
-                        monthly_total = base * noise * sign
-
-                        n_transactions = np.random.randint(3, 9)
-                        splits = np.random.dirichlet(np.ones(n_transactions))
-
-                        for split in splits:
-                            txn_day = int(np.random.randint(1, days_in_month + 1))
-                            txn_date = date(month.year, month.month, txn_day)
-                            txn_amount = round(float(monthly_total * split), 2)
-
-                            record = TransactionRecord(
-                                transaction_id=str(uuid.uuid4()),
-                                date=txn_date,
-                                company=company,
-                                business_unit=bu,
-                                cost_center=cc,
-                                account_code=code,
-                                account_name=name,
-                                dre_line=dre_line,
-                                amount=txn_amount,
-                            )
-                            rows.append(record.model_dump())
+    if year_month is not None:
+        year, month_num = (int(part) for part in year_month.split("-"))
+        _generate_month(date(year, month_num, 1), rows)
+    else:
+        for month in MONTHS:
+            _generate_month(month, rows)
 
     return pd.DataFrame(rows)
 
