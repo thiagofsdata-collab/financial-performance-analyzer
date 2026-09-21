@@ -61,6 +61,27 @@ def get_latest_ingested_month(bucket_name: str = BUCKET_NAME) -> str | None:
     return max(months) if months else None
 
 
+def get_unloaded_objects(year_month: str, bucket_name: str = BUCKET_NAME) -> list[str]:
+    """
+    Object paths under month=<year_month>/ that exist in GCS but do not
+    carry the loaded_to_bq metadata marker.
+
+    Closes a real gap: the watermark (above) only knows a month reached
+    GCS, not that it reached BigQuery. If load_to_bigquery() fails after
+    upload_if_new() already succeeded, the watermark would otherwise treat
+    that month as done and move on, silently losing it. Checking this
+    before generating a new month turns that into "retry the stuck load"
+    instead of "skip it forever".
+    """
+    client = storage.Client()
+    prefix = f"raw/transactions/month={year_month}/"
+    pending = []
+    for blob in client.list_blobs(bucket_name, prefix=prefix):
+        if not (blob.metadata and blob.metadata.get("loaded_to_bq") == "true"):
+            pending.append(blob.name)
+    return pending
+
+
 def upload_if_new(local_path: str, year_month: str, bucket_name: str = BUCKET_NAME) -> dict:
     """
     Uploads local_path to GCS at a content-addressed path, skipping the

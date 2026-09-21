@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.generate_data import generate_transactions, save_raw
-from src.ingest import get_latest_ingested_month, load_to_bigquery, upload_if_new
+from src.ingest import get_latest_ingested_month, get_unloaded_objects, load_to_bigquery, upload_if_new
 
 # 2023 (all 12 months) was already bulk-loaded into BigQuery as a one-time
 # historical backfill in M5/M6. This incremental path picks up from there —
@@ -21,9 +21,17 @@ def _next_month(year_month: str) -> str:
 
 def run() -> None:
     watermark = get_latest_ingested_month()
-    next_month = FIRST_INCREMENTAL_MONTH if watermark is None else _next_month(watermark)
-
     print(f"watermark (ultimo mes no GCS): {watermark or '(nenhum)'}")
+
+    if watermark is not None:
+        pending = get_unloaded_objects(watermark)
+        if pending:
+            print(f"{watermark} ja esta no GCS mas nao foi carregado no BigQuery — retomando antes de avancar")
+            for object_path in pending:
+                load_to_bigquery(object_path)
+            return
+
+    next_month = FIRST_INCREMENTAL_MONTH if watermark is None else _next_month(watermark)
     print(f"proximo mes a processar: {next_month}")
 
     df = generate_transactions(year_month=next_month)
